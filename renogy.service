@@ -1,0 +1,12 @@
+[Unit]
+Description=Renogy LCD
+After=nut-server.service
+ 
+[Service]
+Type=simple
+User=pi
+ExecStart=/home/pi/renogy/renogy_lcd.py
+Restart=always
+ 
+[Install]
+WantedBy=multi-user.target

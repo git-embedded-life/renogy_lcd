@@ -1,0 +1,9 @@
+device.mfr: Renogy
+device.model: R-INVT-PCL1-30111S-US
+device.type: ups
+ups.mfr: Renogy
+ups.model: R-INVT-PCL1-30111S-US
+input.voltage: 0
+output.voltage: 0
+battery.charge: 0
+ups.status: OL
