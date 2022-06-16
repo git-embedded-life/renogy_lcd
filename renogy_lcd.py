@@ -66,6 +66,8 @@ class Number:
         elif digit == [True, True, True, True, False, True, True]:
             return 9
 
+        raise Exception("Not a valid sequence of segment values")
+
     def result(self):
         return 100 * self.segNumber(self.hundred) + 10 * self.segNumber(self.ten) + self.segNumber(self.one)
 
@@ -163,8 +165,6 @@ while True:
 
     print("Exporting Image", flush=True)
     cv2.imwrite("{}_mod.bmp".format(IMAGE_PATH), renoDisp)
-    
-    print("In Volt: {}, Out Volt: {}, Capacity: {}, AC Power: {}".format(inputV.result(), outputV.result(), capacity, acPower), flush=True)
 
     if not acPower and capacity <= 25:
         ups_status = "OB LB"
@@ -173,10 +173,20 @@ while True:
     else:
         ups_status = "OL"
 
-    subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "updater", "-p", secrets.nut_pw, "-s", "input.voltage={}".format(inputV.result()), "renogy"])
-    subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "updater", "-p", secrets.nut_pw, "-s", "output.voltage={}".format(outputV.result()), "renogy"])
-    subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "updater", "-p", secrets.nut_pw, "-s", "battery.charge={}".format(capacity), "renogy"])
-    subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "updater", "-p", secrets.nut_pw, "-s", "ups.status={}".format(ups_status), "renogy"])
+    # Sometimes the exposure will overlap a lcd update and the results from reading the 7 segment digits will not produce
+    # a numeric output.
+    try:
+        inputVolts = inputV.result()
+        outputVolts = outputV.result()
+    except:
+        print("ERROR: Unable to convert seven segment values to number")
+    else:
+        print("In Volt: {}, Out Volt: {}, Capacity: {}, AC Power: {}".format(inputVolts, outputVolts, capacity, acPower), flush=True)
+
+        subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "updater", "-p", secrets.nut_pw, "-s", "input.voltage={}".format(inputVolts), "renogy"])
+        subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "updater", "-p", secrets.nut_pw, "-s", "output.voltage={}".format(outputVolts), "renogy"])
+        subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "updater", "-p", secrets.nut_pw, "-s", "battery.charge={}".format(capacity), "renogy"])
+        subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "updater", "-p", secrets.nut_pw, "-s", "ups.status={}".format(ups_status), "renogy"])
 
     # Init variables
     capacity = 0
