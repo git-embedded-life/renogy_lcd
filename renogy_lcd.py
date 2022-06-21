@@ -8,31 +8,37 @@ import secrets
 
 # Using /dev/shm to reduce writes to the SD card
 IMAGE_PATH = "/dev/shm/renogy_lcd.bmp"
+REF_PATH = "/home/pi/renogy/bulb.bmp"
 ON_THRESHOLD = 50
 ROT_ANGLE = 177
 BOX_SIZE = 5
 
-
-# For now I am manually finding the pixel coordinates from the bmp and entering them here. If I
-# find that I am having to go in and adjust these frequenly I plan to make it smarter.
-AC_POWER = (1107, 1281)
+# Coordinates are relative to a point that is at the top left of the bulb
+# reference image
+AC_POWER = (786, -17)
 
 DIGIT_HEIGHT = 130
 DIGIT_WIDTH = 68
 # Point at top right of digit
-IN_HUNDRED = (1130, 956)
-IN_TEN = (1230, 956)
-IN_ONE = (1331, 956)
-OUT_HUNDRED = (1849, 954)
-OUT_TEN = (1950, 954)
-OUT_ONE = (2052, 954)
+IN_HUNDRED = (763, 312)
+IN_TEN = (663, 312)
+IN_ONE = (562, 312)
+OUT_HUNDRED = (44, 315)
+OUT_TEN = (-57, 315)
+OUT_ONE = (-159, 315)
 
-CAP_25 = (1548, 1450)
+CAP_25 = (345, -181)
 # Capacity line seperation
 CAP_SPACE = 21
-CAP_50 = (CAP_25[0], CAP_25[1] - CAP_SPACE)
-CAP_75 = (CAP_25[0], CAP_50[1] - CAP_SPACE)
-CAP_100 = (CAP_25[0], CAP_75[1] - CAP_SPACE)
+CAP_50 = (CAP_25[0], CAP_25[1] + CAP_SPACE)
+CAP_75 = (CAP_25[0], CAP_50[1] + CAP_SPACE)
+CAP_100 = (CAP_25[0], CAP_75[1] + CAP_SPACE)
+
+LOAD_25 = (-147, -160)
+LOAD_SPACE = 44
+LOAD_50 = (LOAD_25[0], LOAD_25[1] + LOAD_SPACE)
+LOAD_75 = (LOAD_25[0], LOAD_50[1] + LOAD_SPACE)
+LOAD_100 = (LOAD_25[0], LOAD_75[1] + LOAD_SPACE)
 
 
 class Number:
@@ -84,19 +90,20 @@ def intersectToCoords(sqList, tag, place, coord):
     x = coord[0]
     y = coord[1]
 
-    sqList.append([(x - int(DIGIT_WIDTH/2), y), BOX_SIZE, tag, place, 'a'])
-    sqList.append([(x, y + int(DIGIT_HEIGHT/4)), BOX_SIZE, tag, place, 'b'])
-    sqList.append([(x, y + int(DIGIT_HEIGHT/4*3)), BOX_SIZE, tag, place, 'c'])
-    sqList.append([(x - int(DIGIT_WIDTH/2), y + DIGIT_HEIGHT), BOX_SIZE, tag, place, 'd'])
-    sqList.append([(x - DIGIT_WIDTH, y + int(DIGIT_HEIGHT/4*3)), BOX_SIZE, tag, place, 'e'])
-    sqList.append([(x - DIGIT_WIDTH, y + int(DIGIT_HEIGHT/4)), BOX_SIZE, tag, place, 'f'])
-    sqList.append([(x - int(DIGIT_WIDTH/2), y + int(DIGIT_HEIGHT/2)), BOX_SIZE, tag, place, 'g'])
+    sqList.append([(x + int(DIGIT_WIDTH/2), y), BOX_SIZE, tag, place, 'a'])
+    sqList.append([(x, y - int(DIGIT_HEIGHT/4)), BOX_SIZE, tag, place, 'b'])
+    sqList.append([(x, y - int(DIGIT_HEIGHT/4*3)), BOX_SIZE, tag, place, 'c'])
+    sqList.append([(x + int(DIGIT_WIDTH/2), y - DIGIT_HEIGHT), BOX_SIZE, tag, place, 'd'])
+    sqList.append([(x + DIGIT_WIDTH, y - int(DIGIT_HEIGHT/4*3)), BOX_SIZE, tag, place, 'e'])
+    sqList.append([(x + DIGIT_WIDTH, y - int(DIGIT_HEIGHT/4)), BOX_SIZE, tag, place, 'f'])
+    sqList.append([(x + int(DIGIT_WIDTH/2), y - int(DIGIT_HEIGHT/2)), BOX_SIZE, tag, place, 'g'])
 
 
 inputV = Number()
 outputV = Number()
 acPower = False
 capacity = 0
+load = 0
 
 # Add coordinates to list
 monitorSquares = []
@@ -113,17 +120,33 @@ monitorSquares.append([CAP_50, BOX_SIZE, "cap50Percent"])
 monitorSquares.append([CAP_75, BOX_SIZE, "cap75Persent"])
 monitorSquares.append([CAP_100, BOX_SIZE, "cap100Percent"])
 
+monitorSquares.append([LOAD_25, BOX_SIZE, "load25percent"])
+monitorSquares.append([LOAD_50, BOX_SIZE, "load50percent"])
+monitorSquares.append([LOAD_75, BOX_SIZE, "load75percent"])
+monitorSquares.append([LOAD_100, BOX_SIZE, "load100percent"])
+
+# Load reference point
+bulb = cv2.cvtColor(cv2.imread(REF_PATH), cv2.COLOR_BGR2GRAY)
 
 while True:
     print("Capturing LCD", flush=True)
     subprocess.run(["/usr/bin/libcamera-still", "-n", "-e", "bmp", "-o", IMAGE_PATH], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print("Importing Image", flush=True)
     renoDisp = cv2.cvtColor(imutils.rotate_bound(cv2.imread(IMAGE_PATH), ROT_ANGLE), cv2.COLOR_BGR2GRAY)
+    
+    print("Finding Bulb", flush=True)
+    bulb_coord = cv2.minMaxLoc(cv2.matchTemplate(bulb, renoDisp, cv2.TM_SQDIFF_NORMED))[2]
+    cv2.circle(renoDisp, bulb_coord, 4, (255), -1)
+
+    print("Bulb: {}".format(bulb_coord))
 
     print("Analyzing", flush=True)
     for sq in monitorSquares:
-        val = numpy.average(renoDisp[sq[0][1] - BOX_SIZE:sq[0][1] + BOX_SIZE, sq[0][0] - BOX_SIZE:sq[0][0] + BOX_SIZE])
-        cv2.rectangle(renoDisp, (sq[0][0] - BOX_SIZE, sq[0][1] - BOX_SIZE), (sq[0][0] + BOX_SIZE, sq[0][1] + BOX_SIZE), (255), 1)
+        center_pt = (bulb_coord[0] - sq[0][0], bulb_coord[1] - sq[0][1])
+        # print("{}, {}".format(center_pt, sq))
+
+        val = numpy.average(renoDisp[center_pt[1] - BOX_SIZE:center_pt[1] + BOX_SIZE, center_pt[0] - BOX_SIZE:center_pt[0] + BOX_SIZE])
+        cv2.rectangle(renoDisp, (center_pt[0] - BOX_SIZE, center_pt[1] - BOX_SIZE), (center_pt[0] + BOX_SIZE, center_pt[1] + BOX_SIZE), (255), 1)
         
         if val > ON_THRESHOLD:
             bolVal = True
@@ -163,6 +186,26 @@ while True:
                 capacity = 100
             continue
 
+        if tag == "load25percent":
+            if bolVal and load < 25:
+                load = 25
+            continue
+
+        if tag == "load50percent":
+            if bolVal and load < 50:
+                load = 50
+            continue
+
+        if tag == "load75percent":
+            if bolVal and load < 75:
+                load = 75
+            continue
+
+        if tag == "load100percent":
+            if bolVal and load < 100:
+                load = 100
+            continue
+
     print("Exporting Image", flush=True)
     cv2.imwrite("{}_mod.bmp".format(IMAGE_PATH), renoDisp)
 
@@ -178,15 +221,17 @@ while True:
     try:
         inputVolts = inputV.result()
         outputVolts = outputV.result()
-    except:
-        print("ERROR: Unable to convert seven segment values to number")
+    except Exception as error:
+        print("ERROR: {}}".format(error))
     else:
-        print("In Volt: {}, Out Volt: {}, Capacity: {}, AC Power: {}".format(inputVolts, outputVolts, capacity, acPower), flush=True)
+        print("In Volt: {}, Out Volt: {}, Capacity: {}, Load: {}, AC Power: {}".format(inputVolts, outputVolts, capacity, load, acPower), flush=True)
 
-        subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "updater", "-p", secrets.nut_pw, "-s", "input.voltage={}".format(inputVolts), "renogy"])
-        subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "updater", "-p", secrets.nut_pw, "-s", "output.voltage={}".format(outputVolts), "renogy"])
-        subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "updater", "-p", secrets.nut_pw, "-s", "battery.charge={}".format(capacity), "renogy"])
-        subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "updater", "-p", secrets.nut_pw, "-s", "ups.status={}".format(ups_status), "renogy"])
+        subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "renogy_lcd", "-p", secrets.nut_pw, "-s", "input.voltage={}".format(inputVolts), "renogy"])
+        subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "renogy_lcd", "-p", secrets.nut_pw, "-s", "output.voltage={}".format(outputVolts), "renogy"])
+        subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "renogy_lcd", "-p", secrets.nut_pw, "-s", "battery.charge={}".format(capacity), "renogy"])
+        subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "renogy_lcd", "-p", secrets.nut_pw, "-s", "ups.status={}".format(ups_status), "renogy"])
+        subprocess.run(["/usr/local/ups/bin/upsrw", "-w", "-u", "renogy_lcd", "-p", secrets.nut_pw, "-s", "ups.load={}".format(load), "renogy"])
 
     # Init variables
     capacity = 0
+    load = 0
